@@ -1,13 +1,51 @@
 import os
 import io
+import sys
+import logging
 from PIL import Image
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 
-# Get the bot token from environment variables
+# ============================
+# LOGGING SETUP
+# ============================
+
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# ============================
+# TOKEN VALIDATION
+# ============================
+
 TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 
-# Dictionary to store user states
+if not TOKEN:
+    logger.error("❌ TELEGRAM_BOT_TOKEN environment variable is not set!")
+    logger.error("📌 Please set it in Railway Variables or .env file")
+    logger.error("💡 Example: TELEGRAM_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz")
+    sys.exit(1)
+
+TOKEN = TOKEN.strip()
+
+if len(TOKEN) < 20:
+    logger.error(f"❌ Invalid token format. Token is too short: {len(TOKEN)} characters")
+    logger.error("📌 Token should be at least 20 characters long")
+    sys.exit(1)
+
+if ':' not in TOKEN:
+    logger.error("❌ Invalid token format. Token must contain a colon ':'")
+    logger.error("📌 Format: numbers:letters_and_numbers")
+    sys.exit(1)
+
+logger.info(f"✅ Token loaded successfully! (Length: {len(TOKEN)} characters)")
+
+# ============================
+# USER STATE MANAGEMENT
+# ============================
+
 user_states = {}
 
 # ============================
@@ -16,6 +54,9 @@ user_states = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a welcome message with inline keyboard."""
+    user = update.effective_user
+    logger.info(f"User {user.id} (@{user.username}) started the bot")
+    
     keyboard = [
         [
             InlineKeyboardButton("🖼️ Convert Image", callback_data="convert"),
@@ -277,7 +318,7 @@ async def handle_converter(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Store the image in context for later use
         context.user_data['image_data'] = image_bytes
-        context.user_data['image_format'] = 'jpg'  # Default input format
+        context.user_data['image_format'] = 'jpg'
         
         # Ask for output format
         keyboard = [
@@ -446,25 +487,35 @@ async def handle_format_selection(update: Update, context: ContextTypes.DEFAULT_
 # MAIN APPLICATION
 # ============================
 
+def main():
+    """Start the bot."""
+    logger.info("🖼️ ImageConverterX Bot is starting...")
+    logger.info("🤖 Bot username: @ImageConverterX_bot")
+    logger.info(f"🔑 Token loaded: Yes (Length: {len(TOKEN)})")
+    
+    try:
+        # Create the Application
+        application = ApplicationBuilder().token(TOKEN).build()
+        
+        # Add command handlers
+        application.add_handler(CommandHandler('start', start))
+        application.add_handler(CommandHandler('help', help_command))
+        application.add_handler(CommandHandler('about', about_command))
+        application.add_handler(CommandHandler('convert', convert_command))
+        
+        # Add callback query handlers (for buttons)
+        application.add_handler(CallbackQueryHandler(button_callback, pattern='^(menu|convert|help|about)$'))
+        application.add_handler(CallbackQueryHandler(handle_format_selection, pattern='^fmt_'))
+        
+        # Add message handler for all other messages
+        application.add_handler(MessageHandler(filters.ALL, handle_message))
+        
+        logger.info("✅ Bot is running and ready to convert images!")
+        application.run_polling()
+        
+    except Exception as e:
+        logger.error(f"❌ Error starting bot: {e}")
+        sys.exit(1)
+
 if __name__ == '__main__':
-    # Create the Application
-    application = ApplicationBuilder().token(TOKEN).build()
-    
-    # Add command handlers
-    application.add_handler(CommandHandler('start', start))
-    application.add_handler(CommandHandler('help', help_command))
-    application.add_handler(CommandHandler('about', about_command))
-    application.add_handler(CommandHandler('convert', convert_command))
-    
-    # Add callback query handlers (for buttons)
-    application.add_handler(CallbackQueryHandler(button_callback, pattern='^(menu|convert|help|about)$'))
-    application.add_handler(CallbackQueryHandler(handle_format_selection, pattern='^fmt_'))
-    
-    # Add message handler for all other messages
-    application.add_handler(MessageHandler(filters.ALL, handle_message))
-    
-    # Start the bot
-    print("🖼️ ImageConverterX Bot is starting...")
-    print("🤖 Bot username: @ImageConverterX_bot")
-    print("✅ Bot is running and ready to convert images!")
-    application.run_polling()
+    main()
